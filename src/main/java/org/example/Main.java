@@ -1,4 +1,4 @@
-package org.example;
+package Org.Example;
 import java.util.ArrayList;
 
 //TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
