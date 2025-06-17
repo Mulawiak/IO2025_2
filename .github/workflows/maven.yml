@@ -1,38 +1,65 @@
-# Th# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-java-with-maven
-
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-name: Java CI with Maven
+name: CI with PMD Analysis
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ "master" ]
-
-permissions:
-  contents: write
+    branches: [ main ]
 
 jobs:
-  build:
+  test-and-analyze:
     runs-on: ubuntu-latest
-
+    
     steps:
-    - uses: actions/checkout@v4
-
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
     - name: Set up JDK 23
       uses: actions/setup-java@v4
       with:
         java-version: '23'
         distribution: 'temurin'
-        cache: maven
-
-    - name: Build, test, and analyze with Maven
-      run: mvn -B verify --file pom.xml
+        
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+        
+    - name: Run tests
+      run: mvn clean test
       
-    - name: Update dependency graph
-      uses: advanced-security/maven-dependency-submission-action@571e99aab1055c2e71a1e2309b9691de18d6b7d6
+    - name: Run Checkstyle Analysis
+      run: mvn checkstyle:check
+      continue-on-error: false
+      
+    - name: Run PMD Analysis
+      run: mvn pmd:check
+      continue-on-error: false
+      
+    - name: Generate PMD Report
+      if: always()
+      run: mvn pmd:pmd
+      
+    - name: Upload PMD Reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: pmd-reports
+        path: |
+          target/site/pmd.html
+          target/pmd.xml
+        
+    - name: Display PMD Results Summary
+      if: always()
+      run: |
+        echo "=== PMD Analysis Summary ==="
+        if [ -f target/pmd.xml ]; then
+          echo "PMD report generated successfully"
+          # Zlicz liczbę naruszeń
+          violations=$(grep -c "<violation" target/pmd.xml || echo "0")
+          echo "Total violations found: $violations"
+        else
+          echo "No PMD report generated"
+        fi
