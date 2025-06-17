@@ -1,49 +1,75 @@
-name: PMD Code Analysis
+name: CI with PMD Analysis
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ "master" ]
-  schedule:
-    - cron: '36 0 * * 1'
+    branches: [ main ]
 
 jobs:
-  pmd-code-scan:
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
+  test-and-analyze:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 11
-        uses: actions/setup-java@v4
-        with:
-          java-version: '11'
-          distribution: 'temurin'
-
-      - name: Run PMD
-        id: pmd # Nadajemy ID, aby móc odwołać się do wyników tego kroku
-        uses: pmd/pmd-github-action@967a81f8b657c87f7c3e96b62301cb1a48efef29
-        with:
-          rulesets: 'rulesets/java/quickstart.xml'
-          sourcePath: 'src/main/java'
-          analyzeModifiedFilesOnly: false
-
-      - name: Upload SARIF file
-        # Chcemy zawsze przesyłać raport, nawet jeśli build ma zaraz zakończyć się błędem
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: pmd-report.sarif
-
-      # --- NOWY, DODANY KROK ---
-      - name: Fail build on PMD violations
-        # Ten krok uruchomi się TYLKO WTEDY, gdy liczba błędów z kroku 'pmd' będzie większa od 0
-        if: ${{ steps.pmd.outputs.violations_count > 0 }}
-        run: |
-          echo "PMD found ${{ steps.pmd.outputs.violations_count }} violations, failing the build."
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 23
+      uses: actions/setup-java@v4
+      with:
+        java-version: '23'
+        distribution: 'temurin'
+        
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+        
+    - name: Run tests
+      run: mvn clean test
+      
+    - name: Run Checkstyle Analysis
+      run: mvn checkstyle:check
+      continue-on-error: false
+      
+    - name: Run PMD Analysis
+      run: |
+        echo "Running PMD analysis..."
+        mvn pmd:check || echo "PMD found violations"
+        
+    - name: Generate PMD Report (always run)
+      run: |
+        echo "Generating PMD report..."
+        mvn pmd:pmd
+        
+    - name: Check PMD Results
+      run: |
+        echo "=== PMD Analysis Results ==="
+        if [ -f target/pmd.xml ]; then
+          echo "PMD XML report generated successfully"
+          violations=$(grep -c "<violation" target/pmd.xml 2>/dev/null || echo "0")
+          echo "Total violations found: $violations"
+          
+          if [ "$violations" -gt "0" ]; then
+            echo "PMD violations detected:"
+            grep -A 3 "<violation" target/pmd.xml | head -20
+            exit 1
+          else
+            echo "No PMD violations found - SUCCESS!"
+          fi
+        else
+          echo "No PMD XML report found"
           exit 1
+        fi
+        
+    - name: Upload PMD Reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: pmd-reports
+        path: |
+          target/site/pmd.html
+          target/pmd.xml
+          target/site/
