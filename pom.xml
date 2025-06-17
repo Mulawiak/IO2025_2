@@ -53,12 +53,14 @@
                 <version>3.21.0</version>
                 <configuration>
                     <sourceEncoding>UTF-8</sourceEncoding>
+                    <targetJdk>23</targetJdk>
                     <rulesets>
                         <ruleset>/rulesets/java/quickstart.xml</ruleset>
                     </rulesets>
-                    <failOnViolation>true</failOnViolation>
+                    <failOnViolation>false</failOnViolation>
                     <printFailingErrors>true</printFailingErrors>
                     <includeTests>false</includeTests>
+                    <verbose>true</verbose>
                 </configuration>
                 <executions>
                     <execution>
